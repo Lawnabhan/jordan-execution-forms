@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ExecutionMotionData, ExecutionTemplate } from '../types';
-import { Printer } from 'lucide-react';
+import { Printer, Download, FileDown, Type } from 'lucide-react';
 import { JordanFlag } from './JordanFlag';
 import { JusticeEmblem } from './JusticeEmblem';
 
@@ -8,12 +8,21 @@ interface DocumentPaperPreviewProps {
   data: ExecutionMotionData;
   template?: ExecutionTemplate;
   onDirectTextChange?: (text: string) => void;
+  onExportPdf?: () => void;
+  isExportingPdf?: boolean;
+  onExportWord?: () => void;
+  isExportingWord?: boolean;
 }
 
 export const DocumentPaperPreview: React.FC<DocumentPaperPreviewProps> = ({
   data,
+  onExportPdf,
+  isExportingPdf,
+  onExportWord,
+  isExportingWord,
 }) => {
   const [fontSize, setFontSize] = useState<'normal' | 'large'>('normal');
+  const [fontFamily, setFontFamily] = useState<'cairo' | 'tajawal' | 'tahoma'>('cairo');
 
   const caseYear = data.executionCaseYear || new Date().getFullYear();
   const caseNum = data.executionCaseNumber || '........';
@@ -40,6 +49,19 @@ export const DocumentPaperPreview: React.FC<DocumentPaperPreviewProps> = ({
     ? data.directSingleParagraph
     : data.requests.join(' و ') || 'ألتمس اتخاذ الإجراءات القانونية اللازمة وفقاً لأحكام قانون التنفيذ الأردني وتسطير الكتب اللازمة حسب الأصول.';
 
+  const getFontFamilyStyle = () => {
+    switch (fontFamily) {
+      case 'cairo':
+        return "'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif";
+      case 'tajawal':
+        return "'Tajawal', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif";
+      case 'tahoma':
+        return "Tahoma, Arial, sans-serif";
+      default:
+        return "'Cairo', 'Tajawal', Tahoma, sans-serif";
+    }
+  };
+
   return (
     <div className="w-full flex flex-col items-center py-1 space-y-3">
       
@@ -55,23 +77,65 @@ export const DocumentPaperPreview: React.FC<DocumentPaperPreviewProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Font switcher */}
+          <div className="flex items-center gap-1 bg-slate-800/90 rounded-lg px-2 py-0.5 border border-amber-500/30">
+            <Type className="w-3 h-3 text-amber-400" />
+            <select
+              value={fontFamily}
+              onChange={(e) => setFontFamily(e.target.value as any)}
+              className="bg-transparent text-amber-200 text-[11px] font-bold focus:outline-hidden cursor-pointer"
+              title="نوع الخط العربي"
+            >
+              <option value="cairo" className="bg-slate-900 text-white">خط كايرو (واضح للـ PDF)</option>
+              <option value="tajawal" className="bg-slate-900 text-white">خط تجوال القانوني</option>
+              <option value="tahoma" className="bg-slate-900 text-white">خط تاهوما الرسمي</option>
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={() => setFontSize(fontSize === 'normal' ? 'large' : 'normal')}
             className="px-2.5 py-1 bg-slate-800/90 hover:bg-slate-700 text-amber-200 hover:text-white rounded-lg border border-amber-500/30 text-[11px] font-mono transition"
             title="تبديل حجم الخط"
           >
-            {fontSize === 'normal' ? 'حجم الخط: عادي' : 'حجم الخط: كبير'}
+            {fontSize === 'normal' ? 'الحجم: عادي' : 'الحجم: كبير'}
           </button>
+
+          {onExportPdf && (
+            <button
+              type="button"
+              onClick={onExportPdf}
+              disabled={isExportingPdf}
+              className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 transition shadow-xs active:scale-95"
+              title="تنزيل كملف PDF"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>{isExportingPdf ? 'جارِ التحميل...' : 'PDF'}</span>
+            </button>
+          )}
+
+          {onExportWord && (
+            <button
+              type="button"
+              onClick={onExportWord}
+              disabled={isExportingWord}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg font-bold text-[11px] flex items-center gap-1 transition shadow-xs active:scale-95"
+              title="تنزيل كملف Word"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-950" />
+              <span>{isExportingWord ? 'جارِ التحميل...' : 'Word'}</span>
+            </button>
+          )}
 
           <button
             type="button"
             onClick={() => window.print()}
-            className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition shadow-xs"
+            className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 transition shadow-xs active:scale-95"
+            title="طباعة"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>طباعة الورقة</span>
+            <span>طباعة</span>
           </button>
         </div>
       </div>
@@ -85,27 +149,29 @@ export const DocumentPaperPreview: React.FC<DocumentPaperPreviewProps> = ({
         style={{ 
           direction: 'rtl',
           textAlign: 'right',
-          fontFamily: "'Amiri', 'Traditional Arabic', 'Simplified Arabic', serif",
+          fontFamily: getFontFamilyStyle(),
+          letterSpacing: '0px',
+          wordSpacing: '1px',
         }}
       >
         
         {/* 1. رقم القضية : الرقم هنا/ السنة هنا */}
         <div className="text-right">
-          <p className="text-slate-950 font-bold text-base sm:text-lg">
+          <p className="text-slate-950 font-bold text-base sm:text-lg tracking-normal">
             رقم القضية : {caseRef}
           </p>
         </div>
 
         {/* 2. ما بعد في منتصف الصفحة */}
         <div className="text-center py-2">
-          <p className="text-slate-950 font-bold text-base sm:text-lg inline-block">
+          <p className="text-slate-950 font-bold text-base sm:text-lg inline-block tracking-normal">
             ما بعد
           </p>
         </div>
 
         {/* 3. حضر وكيل المحكوم له او عليه المحامي / المحامية و قال او قالت: */}
         <div className="text-right">
-          <p className="text-slate-950 font-bold text-base sm:text-lg">
+          <p className="text-slate-950 font-bold text-base sm:text-lg tracking-normal">
             {attendanceLine}
           </p>
         </div>
@@ -113,7 +179,7 @@ export const DocumentPaperPreview: React.FC<DocumentPaperPreviewProps> = ({
         {/* 4. (Optional) وردت مشروحات صادرة .... */}
         {data.hasAttachments && (
           <div className="text-right">
-            <p className="text-slate-950 text-base sm:text-lg font-normal text-justify">
+            <p className="text-slate-950 text-base sm:text-lg font-normal text-right leading-relaxed">
               {data.attachmentsText 
                 ? `وردت مشروحات صادرة ${data.attachmentsText}`
                 : 'وردت مشروحات صادرة ومرفقة طياً مع هذا الطلب.'}
@@ -123,21 +189,21 @@ export const DocumentPaperPreview: React.FC<DocumentPaperPreviewProps> = ({
 
         {/* 5. هنا يوضع الطلب بشكل مباشر بفقرة واحدة */}
         <div className="text-right">
-          <p className="text-slate-950 text-base sm:text-lg font-normal leading-relaxed text-justify">
+          <p className="text-slate-950 text-base sm:text-lg font-normal leading-relaxed text-right">
             {singleParagraph}
           </p>
         </div>
 
         {/* 6. و عليه ترفع الاوراق لرئاسة التنفيذ لاجراء المقتضى القانوني حسب الاصول */}
         <div className="text-right pt-3">
-          <p className="text-slate-950 font-bold text-base sm:text-lg leading-relaxed">
+          <p className="text-slate-950 font-bold text-base sm:text-lg leading-relaxed text-right">
             و عليه ترفع الاوراق لرئاسة التنفيذ لاجراء المقتضى القانوني حسب الاصول
           </p>
         </div>
 
         {/* 7. تحريرا بتاريخ : يوضع التاريخ هنا */}
         <div className="text-right pt-1">
-          <p className="text-slate-950 font-bold text-base sm:text-lg">
+          <p className="text-slate-950 font-bold text-base sm:text-lg tracking-normal">
             تحريرا بتاريخ : {data.motionDate || new Date().toISOString().split('T')[0]}
           </p>
         </div>

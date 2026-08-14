@@ -1,7 +1,8 @@
 import React from 'react';
-import { X, FileText, Trash2, ArrowLeft, Download, Clock, Calendar } from 'lucide-react';
+import { X, FileText, Trash2, ArrowLeft, Download, FileDown, Clock, Calendar } from 'lucide-react';
 import { ExecutionMotionData } from '../types';
 import { exportMotionToDocx } from '../utils/docxExport';
+import { exportMotionToPdf } from '../utils/pdfExport';
 import { getTemplateById } from '../data/templates';
 import { JordanFlag } from './JordanFlag';
 import { JusticeEmblem } from './JusticeEmblem';
@@ -84,14 +85,27 @@ export const SavedDraftsModal: React.FC<SavedDraftsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => exportMotionToDocx(d.data, tmpl)}
-                      className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition"
-                      title="تحميل كملف Word"
+                      className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 border border-amber-500/30 flex items-center gap-1 text-xs font-bold transition"
+                      title="تحميل كملف Word DOCX"
                     >
-                      <Download className="w-4 h-4" />
+                      <Download className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Word</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onLoadDraft(d);
+                        onClose();
+                      }}
+                      className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition"
+                      title="معاينة وتنزيل PDF"
+                    >
+                      <FileDown className="w-4 h-4 text-red-600" />
                     </button>
 
                     <button
@@ -109,7 +123,7 @@ export const SavedDraftsModal: React.FC<SavedDraftsModalProps> = ({
                         onLoadDraft(d);
                         onClose();
                       }}
-                      className="flex items-center gap-1 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition"
+                      className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs"
                     >
                       <span>فتح وتعديل</span>
                       <ArrowLeft className="w-3.5 h-3.5" />

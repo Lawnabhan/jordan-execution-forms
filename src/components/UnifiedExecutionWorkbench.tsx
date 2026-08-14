@@ -11,7 +11,8 @@ import {
   PenTool, 
   FolderOpen,
   BookOpen,
-  FileCheck
+  FileCheck,
+  FileDown
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ExecutionMotionData, LawyerProfile, TemplateCategoryId } from '../types';
@@ -19,6 +20,7 @@ import { ALL_EXECUTION_TEMPLATES, getTemplateById } from '../data/templates';
 import { TEMPLATE_CATEGORIES } from '../data/categories';
 import { COMMON_EXECUTION_REQUESTS } from '../data/commonRequests';
 import { exportMotionToDocx } from '../utils/docxExport';
+import { exportMotionToPdf } from '../utils/pdfExport';
 import { DocumentPaperPreview } from './DocumentPaperPreview';
 import { InlineSignaturePad } from './InlineSignaturePad';
 import { JordanFlag } from './JordanFlag';
@@ -107,6 +109,7 @@ export const UnifiedExecutionWorkbench: React.FC<UnifiedExecutionWorkbenchProps>
   const [copied, setCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportingWord, setIsExportingWord] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [selectedPredefinedRequest, setSelectedPredefinedRequest] = useState('');
   const [requestAddedFeedback, setRequestAddedFeedback] = useState(false);
 
@@ -201,6 +204,28 @@ export const UnifiedExecutionWorkbench: React.FC<UnifiedExecutionWorkbenchProps>
       alert('حدث خطأ أثناء تصدير ملف الوورد');
     } finally {
       setIsExportingWord(false);
+    }
+  };
+
+  // Export to PDF directly matching the exact paper preview
+  const handleExportPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      await exportMotionToPdf('legal-document-to-print', motionData);
+      try {
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.8 },
+        });
+      } catch (e) {
+        // ignore
+      }
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+      alert('حدث خطأ أثناء تصدير ملف PDF، يمكنك استخدام خيار الطباعة واختيار حفظ كـ PDF');
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -673,11 +698,12 @@ ${lawyerPrefix} ${cleanLawyerName}
               <button
                 type="button"
                 onClick={handleCopyText}
-                className="px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition shadow-xs"
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition shadow-xs"
                 title="نسخ النص كاملاً"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'تم النسخ' : 'نسخ النص'}</span>
+                <span className="hidden sm:inline">{copied ? 'تم النسخ' : 'نسخ النص'}</span>
+                <span className="sm:hidden">{copied ? 'تم' : 'نسخ'}</span>
               </button>
 
               {/* Save Draft */}
@@ -685,22 +711,34 @@ ${lawyerPrefix} ${cleanLawyerName}
                 type="button"
                 onClick={handleSave}
                 disabled={isSaving}
-                className="px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition shadow-xs"
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition shadow-xs"
                 title="حفظ كمسودة"
               >
                 <Save className="w-3.5 h-3.5 text-blue-400" />
                 <span>{isSaving ? 'جارِ الحفظ...' : 'حفظ'}</span>
               </button>
 
-              {/* Print / Save PDF */}
+              {/* Print */}
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-3 py-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 hover:text-white rounded-xl text-xs font-bold border border-emerald-600/50 flex items-center gap-1.5 transition shadow-xs"
-                title="طباعة الورقة أو حفظ PDF"
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition shadow-xs"
+                title="طباعة الورقة مباشرة"
               >
-                <Printer className="w-3.5 h-3.5 text-emerald-300" />
-                <span>طباعة / PDF</span>
+                <Printer className="w-3.5 h-3.5 text-slate-300" />
+                <span className="hidden sm:inline">طباعة</span>
+              </button>
+
+              {/* Export PDF */}
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-md border border-red-400/60 active:scale-95"
+                title="تصدير وتحميل ملف PDF فوري عالي الدقة"
+              >
+                <FileDown className="w-3.5 h-3.5 text-red-100" />
+                <span>{isExportingPdf ? 'جارِ إنشاء PDF...' : 'تنزيل PDF'}</span>
               </button>
 
               {/* Export Word (DOCX) */}
@@ -708,7 +746,7 @@ ${lawyerPrefix} ${cleanLawyerName}
                 type="button"
                 onClick={handleExportWord}
                 disabled={isExportingWord}
-                className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-md border border-amber-300"
+                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-md border border-amber-300 active:scale-95"
                 title="تصدير ملف مايكروسوفت وورد Word DOCX"
               >
                 <Download className="w-3.5 h-3.5 text-slate-950" />
@@ -724,6 +762,10 @@ ${lawyerPrefix} ${cleanLawyerName}
             <DocumentPaperPreview
               data={motionData}
               template={selectedTemplate}
+              onExportPdf={handleExportPdf}
+              isExportingPdf={isExportingPdf}
+              onExportWord={handleExportWord}
+              isExportingWord={isExportingWord}
             />
           </div>
 
