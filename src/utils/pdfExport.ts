@@ -1,126 +1,286 @@
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { ExecutionMotionData } from '../types';
+import { ExecutionMotionData, ExecutionTemplate } from '../types';
+import { downloadBlob } from './downloadHelper';
 
 /**
- * Export the visual legal document directly to a high-resolution PDF file.
- * Uses high-legibility Arabic web fonts (Cairo / Tajawal / Tahoma) with zero glyph-clipping,
- * proper letter connection, and clean margin spacing.
+ * Cleanly export the legal motion document to a high-resolution PDF file.
+ * Uses an isolated sandbox iframe to completely eliminate Tailwind v4 oklch() color issues,
+ * and downloads the PDF directly to the user's computer.
  */
 export async function exportMotionToPdf(
-  elementId: string,
-  data: ExecutionMotionData
+  data: ExecutionMotionData,
+  template?: ExecutionTemplate,
+  fontFamily: 'cairo' | 'tajawal' | 'tahoma' = 'cairo'
 ): Promise<void> {
-  const element = document.getElementById(elementId);
-  if (!element) {
-    throw new Error('لم يتم العثور على عنصر المحضر القضائي');
-  }
-
-  // Ensure document fonts are loaded before capturing
-  if (document.fonts && document.fonts.ready) {
-    try {
-      await document.fonts.ready;
-    } catch (e) {
-      console.warn('Font loading check skipped', e);
-    }
-  }
-
   const caseYear = data.executionCaseYear || new Date().getFullYear();
-  const caseNum = data.executionCaseNumber || 'جديد';
-  const safeFilename = `طلب_تنفيذي_${caseNum}_${caseYear}.pdf`;
+  const caseNum = data.executionCaseNumber || '........';
+  const caseRef = `${caseNum} / ${caseYear}`;
+  const motionDate = data.motionDate || new Date().toISOString().split('T')[0];
 
-  const originalShadow = element.style.boxShadow;
-  element.style.boxShadow = 'none';
+  const lawyerPrefix = data.lawyerGender === 'female' ? 'المحامية' : 'المحامي';
+  const attendedVerb = data.lawyerGender === 'female' ? 'قالت' : 'قال';
+  const attendingRole = data.attendingRole || 'وكيل المحكوم له';
+  const cleanLawyerName = data.applicantLawyer 
+    ? data.applicantLawyer.replace(/^(المحامي|المحامية|الأستاذ|الأستاذة)\s*/, '') 
+    : '................................';
+  const attendanceLine = `حضر ${attendingRole} ${lawyerPrefix} ${cleanLawyerName} و${attendedVerb}:`;
+
+  const singleParagraph = data.directSingleParagraph?.trim()
+    ? data.directSingleParagraph
+    : data.requests.join(' و ') || 'ألتمس اتخاذ الإجراءات القانونية اللازمة وفقاً لأحكام قانون التنفيذ الأردني وتسطير الكتب اللازمة حسب الأصول.';
+
+  const fontStack = fontFamily === 'cairo'
+    ? "'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif"
+    : fontFamily === 'tajawal'
+    ? "'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif"
+    : "Tahoma, Arial, sans-serif";
+
+  // Create an isolated iframe to prevent main-page Tailwind CSS v4 (oklch colors) from breaking html2canvas
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.top = '0';
+  iframe.style.left = '0';
+  iframe.style.width = '794px';
+  iframe.style.height = '1123px';
+  iframe.style.border = 'none';
+  iframe.style.zIndex = '-99999';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+
+  document.body.appendChild(iframe);
 
   try {
-    const canvas = await html2canvas(element, {
-      scale: 2.5, // Crisp 250+ DPI for legal printouts
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      throw new Error('Unable to create rendering sandbox iframe');
+    }
+
+    // Pure self-contained HTML with standard hex colors only
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8" />
+        <title>طلب تنفيذي</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap');
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            background-color: #ffffff;
+            color: #000000;
+            font-family: ${fontStack};
+            padding: 50px 55px;
+            direction: rtl;
+            text-align: right;
+            width: 794px;
+            min-height: 1123px;
+            font-size: 17px;
+            line-height: 1.8;
+            -webkit-font-smoothing: antialiased;
+          }
+          .case-header {
+            font-weight: 700;
+            font-size: 19px;
+            margin-bottom: 24px;
+            color: #000000;
+          }
+          .section-divider {
+            text-align: center;
+            font-weight: 700;
+            font-size: 19px;
+            margin-bottom: 24px;
+            color: #000000;
+          }
+          .attendance-row {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 22px;
+            color: #000000;
+          }
+          .attachments-row {
+            font-size: 17px;
+            margin-bottom: 22px;
+            color: #000000;
+            line-height: 1.8;
+          }
+          .request-body {
+            font-size: 17px;
+            line-height: 1.85;
+            margin-bottom: 26px;
+            color: #000000;
+            text-align: justify;
+          }
+          .routing-footer {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 24px;
+            color: #000000;
+          }
+          .date-row {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 45px;
+            color: #000000;
+          }
+          .signatures-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          .signatures-table td {
+            vertical-align: top;
+            border: none;
+            padding: 0;
+          }
+          .lawyer-col {
+            text-align: right;
+            width: 50%;
+          }
+          .officer-col {
+            text-align: left;
+            width: 50%;
+            direction: ltr;
+          }
+          .sig-title {
+            font-weight: 700;
+            font-size: 18px;
+            color: #000000;
+            margin-bottom: 4px;
+          }
+          .sig-name {
+            font-weight: 700;
+            font-size: 18px;
+            color: #000000;
+            margin-bottom: 10px;
+          }
+          .sig-img {
+            max-height: 65px;
+            max-width: 150px;
+            display: block;
+            margin-top: 6px;
+          }
+          .stamp-img {
+            max-height: 70px;
+            max-width: 70px;
+            display: block;
+            margin-top: 6px;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="capture-target">
+          <!-- 1. Case Number -->
+          <div class="case-header">
+            رقم القضية : ${caseRef}
+          </div>
+
+          <!-- 2. ما بعد -->
+          <div class="section-divider">
+            ما بعد
+          </div>
+
+          <!-- 3. Attendance Line -->
+          <div class="attendance-row">
+            ${attendanceLine}
+          </div>
+
+          <!-- 4. Optional Attachments Note -->
+          ${data.hasAttachments ? `
+            <div class="attachments-row">
+              ${data.attachmentsText ? `وردت مشروحات صادرة ${data.attachmentsText}` : 'وردت مشروحات صادرة ومرفقة طياً مع هذا الطلب.'}
+            </div>
+          ` : ''}
+
+          <!-- 5. Single Direct Motion Paragraph -->
+          <div class="request-body">
+            ${singleParagraph}
+          </div>
+
+          <!-- 6. Legal Routing Formula -->
+          <div class="routing-footer">
+            و عليه ترفع الاوراق لرئاسة التنفيذ لاجراء المقتضى القانوني حسب الاصول
+          </div>
+
+          <!-- 7. Date -->
+          <div class="date-row">
+            تحريرا بتاريخ : ${motionDate}
+          </div>
+
+          <!-- 8. Signatures Block -->
+          <table class="signatures-table">
+            <tr>
+              <td class="lawyer-col">
+                <div class="sig-title">توقيع ${attendingRole}</div>
+                <div class="sig-name">${lawyerPrefix} ${cleanLawyerName}</div>
+                ${data.includeSignature && data.lawyerSignature ? `
+                  <img src="${data.lawyerSignature}" alt="التوقيع" class="sig-img" />
+                ` : ''}
+                ${data.includeStamp && data.lawyerStamp ? `
+                  <img src="${data.lawyerStamp}" alt="الختم" class="stamp-img" />
+                ` : ''}
+              </td>
+              <td class="officer-col">
+                <div class="sig-title" style="direction: rtl; text-align: left;">توقيع مامور التنفيذ</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </body>
+      </html>
+    `;
+
+    iframeDoc.open();
+    iframeDoc.write(htmlContent);
+    iframeDoc.close();
+
+    // Wait for fonts & images inside the iframe
+    if (iframeDoc.fonts && iframeDoc.fonts.ready) {
+      await iframeDoc.fonts.ready;
+    }
+
+    // Give images in iframe a moment to render
+    const images = iframeDoc.querySelectorAll('img');
+    if (images.length > 0) {
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((res) => {
+            img.onload = res;
+            img.onerror = res;
+          });
+        })
+      );
+    }
+
+    // Slight delay for font layout engine
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const targetElement = iframeDoc.getElementById('capture-target') || iframeDoc.body;
+
+    const canvas = await html2canvas(targetElement, {
+      scale: 2.5,
       useCORS: true,
       allowTaint: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: 1050,
       onclone: (clonedDoc) => {
-        // Inject dedicated, rock-solid font & layout stylesheet into the clone
-        const customStyle = clonedDoc.createElement('style');
-        customStyle.innerHTML = `
-          @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap');
-          
-          * {
-            box-sizing: border-box !important;
-            letter-spacing: 0 !important;
-            word-spacing: 1px !important;
-            text-rendering: geometricPrecision !important;
-            -webkit-font-smoothing: antialiased !important;
-            font-feature-settings: "liga" 1, "calt" 1 !important;
+        // Strip any unexpected external stylesheets in the clone
+        const styles = clonedDoc.querySelectorAll('link[rel="stylesheet"]');
+        styles.forEach((el) => {
+          if (!el.getAttribute('href')?.includes('fonts.googleapis.com')) {
+            el.remove();
           }
-          
-          body, .legal-document-paper, .legal-document-paper * {
-            font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif !important;
-            color: #0f172a !important;
-            direction: rtl !important;
-          }
-
-          .legal-document-paper {
-            width: 820px !important;
-            max-width: 820px !important;
-            min-height: auto !important;
-            padding: 48px 56px !important;
-            background: #ffffff !important;
-            border: 1px solid #cbd5e1 !important;
-            box-shadow: none !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 24px !important;
-            text-align: right !important;
-          }
-
-          /* Prevent canvas justification from breaking arabic ligatures */
-          .text-justify, .text-right, p, span, div {
-            text-align: right !important;
-            text-justify: none !important;
-          }
-          .text-center { text-align: center !important; }
-          .text-left { text-align: left !important; }
-
-          .font-bold { font-weight: 700 !important; }
-          .font-normal { font-weight: 500 !important; }
-
-          .text-base { font-size: 16.5px !important; }
-          .text-lg { font-size: 18.5px !important; }
-          .text-xl { font-size: 21px !important; }
-
-          .leading-relaxed { line-height: 1.95 !important; }
-          .leading-loose { line-height: 2.2 !important; }
-
-          .flex { display: flex !important; }
-          .justify-between { justify-content: space-between !important; }
-          .items-start { align-items: flex-start !important; }
-          .items-center { align-items: center !important; }
-
-          .pt-10 { padding-top: 40px !important; }
-          .pt-3 { padding-top: 12px !important; }
-          .pt-1 { padding-top: 4px !important; }
-          .py-2 { padding-top: 8px !important; padding-bottom: 8px !important; }
-
-          img { max-width: 100% !important; display: block !important; }
-        `;
-        clonedDoc.head.appendChild(customStyle);
-
-        const clonedTarget = clonedDoc.getElementById(elementId);
-        if (clonedTarget) {
-          clonedTarget.style.boxShadow = 'none';
-          clonedTarget.style.border = '1px solid #cbd5e1';
-          clonedTarget.style.backgroundColor = '#ffffff';
-          clonedTarget.style.width = '820px';
-          clonedTarget.style.padding = '48px 56px';
-        }
+        });
       },
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.98);
 
-    // Standard A4 dimensions in mm (210 x 297)
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -130,7 +290,7 @@ export async function exportMotionToPdf(
 
     const pageWidth = 210;
     const pageHeight = 297;
-    const margin = 12; // 12mm page margins
+    const margin = 10;
     const contentWidth = pageWidth - (margin * 2);
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
     const maxPageHeight = pageHeight - (margin * 2);
@@ -152,11 +312,17 @@ export async function exportMotionToPdf(
       }
     }
 
-    pdf.save(safeFilename);
-  } catch (err) {
-    console.error('Canvas capture failed, falling back to clean print:', err);
+    const safeFilename = `طلب_تنفيذي_${caseNum}_${caseYear}.pdf`;
+    const pdfBlob = pdf.output('blob');
+    downloadBlob(pdfBlob, safeFilename);
+  } catch (error) {
+    console.error('PDF Generation Error:', error);
+    // In case of any browser canvas security limitation, fallback to printing
+    alert('تعذر إنشاء الـ PDF تلقائياً عبر المتصفح، جاري تحويلك لخيار الطباعة لحفظ الملف كـ PDF...');
     window.print();
   } finally {
-    element.style.boxShadow = originalShadow;
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
+    }
   }
 }

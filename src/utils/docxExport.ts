@@ -2,31 +2,33 @@ import {
   Document, 
   Packer, 
   Paragraph, 
-  TextRun,
-  AlignmentType,
-  Table,
-  TableRow,
-  TableCell,
-  WidthType,
-  BorderStyle,
-  ImageRun
+  TextRun, 
+  AlignmentType, 
+  Table, 
+  TableRow, 
+  TableCell, 
+  WidthType, 
+  BorderStyle, 
+  ImageRun 
 } from 'docx';
-import { saveAs } from 'file-saver';
 import { ExecutionMotionData, ExecutionTemplate } from '../types';
+import { downloadBlob } from './downloadHelper';
 
-// Convert base64 Data URL to Uint8Array buffer
+// Convert base64 Data URL to Uint8Array buffer safely
 function dataUrlToUint8Array(dataUrl: string): Uint8Array | null {
   try {
+    if (!dataUrl || !dataUrl.includes(',')) return null;
     const parts = dataUrl.split(',');
     if (parts.length < 2) return null;
-    const raw = atob(parts[1]);
-    const u8 = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) {
-      u8[i] = raw.charCodeAt(i);
+    const binary = atob(parts[1]);
+    const len = binary.length;
+    const u8 = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      u8[i] = binary.charCodeAt(i);
     }
     return u8;
   } catch (e) {
-    console.error('Failed to convert image to buffer:', e);
+    console.error('Failed to convert base64 image:', e);
     return null;
   }
 }
@@ -37,11 +39,11 @@ export async function exportMotionToDocx(
 ): Promise<void> {
   const caseYear = data.executionCaseYear || new Date().getFullYear();
   const caseNum = data.executionCaseNumber || '........';
-  const caseRef = `${caseNum}/ ${caseYear}`;
+  const caseRef = `${caseNum} / ${caseYear}`;
 
   const isFemale = data.lawyerGender === 'female';
   const lawyerPrefix = isFemale ? 'المحامية' : 'المحامي';
-  const speechVerb = isFemale ? 'قالت' : 'وقال';
+  const speechVerb = isFemale ? 'قالت' : 'قال';
   const attendingRole = data.attendingRole || 'وكيل المحكوم له';
 
   let cleanLawyerName = (data.applicantLawyer || '').trim();
@@ -50,7 +52,7 @@ export async function exportMotionToDocx(
     cleanLawyerName = '................................';
   }
 
-  const attendanceLine = `حضر ${attendingRole} ${lawyerPrefix} ${cleanLawyerName} ${speechVerb}:`;
+  const attendanceLine = `حضر ${attendingRole} ${lawyerPrefix} ${cleanLawyerName} و${speechVerb}:`;
   const singleParagraph = (data.directSingleParagraph && data.directSingleParagraph.trim().length > 0)
     ? data.directSingleParagraph
     : data.requests.join(' و ') || 'ألتمس اتخاذ الإجراءات القانونية اللازمة وفقاً لأحكام قانون التنفيذ الأردني وتسطير الكتب اللازمة حسب الأصول.';
@@ -71,6 +73,22 @@ export async function exportMotionToDocx(
     }
   }
 
+  // Prepare stamp image buffer if available
+  let stampImageRun: ImageRun | null = null;
+  if (data.includeStamp && data.lawyerStamp) {
+    const stampBuffer = dataUrlToUint8Array(data.lawyerStamp);
+    if (stampBuffer) {
+      stampImageRun = new ImageRun({
+        data: stampBuffer,
+        transformation: {
+          width: 70,
+          height: 70,
+        },
+        type: 'png',
+      });
+    }
+  }
+
   const doc = new Document({
     styles: {
       default: {
@@ -82,8 +100,7 @@ export async function exportMotionToDocx(
               hAnsi: 'Traditional Arabic' 
             },
             rightToLeft: true,
-            language: { bidirectional: 'ar-JO', value: 'ar-JO' },
-            size: 32, // 16pt in Arabic
+            size: 32, // 16pt
           },
           paragraph: {
             spacing: { line: 360, before: 100, after: 100 },
@@ -104,7 +121,7 @@ export async function exportMotionToDocx(
           },
         },
         children: [
-          // 1. رقم القضية : الرقم هنا/ السنة هنا (يبدأ من اليمين)
+          // 1. رقم القضية : الرقم / السنة
           new Paragraph({
             bidirectional: true,
             spacing: { after: 200 },
@@ -112,7 +129,7 @@ export async function exportMotionToDocx(
               new TextRun({
                 text: `رقم القضية : ${caseRef}`,
                 bold: true,
-                size: 32,
+                size: 34,
                 rightToLeft: true,
               }),
             ],
@@ -127,13 +144,13 @@ export async function exportMotionToDocx(
               new TextRun({
                 text: 'ما بعد',
                 bold: true,
-                size: 32,
+                size: 34,
                 rightToLeft: true,
               }),
             ],
           }),
 
-          // 3. حضر وكيل المحكوم له او عليه المحامي / المحامية و قال او قالت:
+          // 3. حضر وكيل المحكوم له أو عليه
           new Paragraph({
             bidirectional: true,
             spacing: { before: 120, after: 160 },
@@ -141,13 +158,13 @@ export async function exportMotionToDocx(
               new TextRun({
                 text: attendanceLine,
                 bold: true,
-                size: 32,
+                size: 34,
                 rightToLeft: true,
               }),
             ],
           }),
 
-          // 4. (اختياري) وردت مشروحات صادرة .... في حال وجود مرفقات
+          // 4. المشروحات المرفقة إن وجدت
           ...(data.hasAttachments ? [
             new Paragraph({
               bidirectional: true,
@@ -164,7 +181,7 @@ export async function exportMotionToDocx(
             }),
           ] : []),
 
-          // 5. هنا يوضع الطلب بشكل مباشر بفقرة واحدة
+          // 5. نص الطلب المباشر
           new Paragraph({
             bidirectional: true,
             spacing: { before: 140, after: 220 },
@@ -177,7 +194,7 @@ export async function exportMotionToDocx(
             ],
           }),
 
-          // 6. و عليه ترفع الاوراق لرئاسة التنفيذ لاجراء المقتضى القانوني حسب الاصول
+          // 6. عبارة الرفع لرئاسة التنفيذ
           new Paragraph({
             bidirectional: true,
             spacing: { before: 200, after: 160 },
@@ -185,13 +202,13 @@ export async function exportMotionToDocx(
               new TextRun({
                 text: 'و عليه ترفع الاوراق لرئاسة التنفيذ لاجراء المقتضى القانوني حسب الاصول',
                 bold: true,
-                size: 32,
+                size: 34,
                 rightToLeft: true,
               }),
             ],
           }),
 
-          // 7. تحريرا بتاريخ : يوضع التاريخ هنا
+          // 7. التاريخ
           new Paragraph({
             bidirectional: true,
             spacing: { before: 160, after: 400 },
@@ -199,13 +216,13 @@ export async function exportMotionToDocx(
               new TextRun({
                 text: `تحريرا بتاريخ : ${data.motionDate || new Date().toISOString().split('T')[0]}`,
                 bold: true,
-                size: 32,
+                size: 34,
                 rightToLeft: true,
               }),
             ],
           }),
 
-          // 8. جدول التوقيعات بدون إطار (توقيع الوكيل على اليمين وتوقيع مأمور التنفيذ على اليسار)
+          // 8. جدول التوقيعات القانوني (بدون حدود خارجية)
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             visuallyRightToLeft: true,
@@ -232,7 +249,7 @@ export async function exportMotionToDocx(
                     children: [
                       new Paragraph({
                         bidirectional: true,
-                        spacing: { before: 200, after: 80 },
+                        spacing: { before: 150, after: 80 },
                         children: [
                           new TextRun({
                             text: `توقيع ${attendingRole}`,
@@ -244,7 +261,7 @@ export async function exportMotionToDocx(
                       }),
                       new Paragraph({
                         bidirectional: true,
-                        spacing: { after: 120 },
+                        spacing: { after: 100 },
                         children: [
                           new TextRun({
                             text: `${lawyerPrefix} ${cleanLawyerName}`,
@@ -254,12 +271,20 @@ export async function exportMotionToDocx(
                           }),
                         ],
                       }),
-                      // إدراج صورة التوقيع المرسوم أسفل اسم المحامي مباشرة إذا كان موجوداً
+                      // إدراج التوقيع
                       ...(signatureImageRun ? [
                         new Paragraph({
                           bidirectional: true,
-                          spacing: { before: 80, after: 120 },
+                          spacing: { before: 60, after: 80 },
                           children: [signatureImageRun],
+                        }),
+                      ] : []),
+                      // إدراج الختم
+                      ...(stampImageRun ? [
+                        new Paragraph({
+                          bidirectional: true,
+                          spacing: { before: 40, after: 80 },
+                          children: [stampImageRun],
                         }),
                       ] : []),
                     ],
@@ -278,7 +303,7 @@ export async function exportMotionToDocx(
                       new Paragraph({
                         alignment: AlignmentType.LEFT,
                         bidirectional: true,
-                        spacing: { before: 200, after: 100 },
+                        spacing: { before: 150, after: 100 },
                         children: [
                           new TextRun({
                             text: 'توقيع مامور التنفيذ',
@@ -301,5 +326,5 @@ export async function exportMotionToDocx(
 
   const blob = await Packer.toBlob(doc);
   const safeFilename = `طلب_تنفيذي_${data.executionCaseNumber || 'جديد'}_${caseYear}.docx`;
-  saveAs(blob, safeFilename);
+  downloadBlob(blob, safeFilename);
 }

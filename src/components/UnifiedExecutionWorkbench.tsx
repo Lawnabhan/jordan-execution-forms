@@ -211,7 +211,7 @@ export const UnifiedExecutionWorkbench: React.FC<UnifiedExecutionWorkbenchProps>
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
-      await exportMotionToPdf('legal-document-to-print', motionData);
+      await exportMotionToPdf(motionData, selectedTemplate);
       try {
         confetti({
           particleCount: 50,
@@ -223,7 +223,7 @@ export const UnifiedExecutionWorkbench: React.FC<UnifiedExecutionWorkbenchProps>
       }
     } catch (error) {
       console.error('Failed to export PDF:', error);
-      alert('حدث خطأ أثناء تصدير ملف PDF، يمكنك استخدام خيار الطباعة واختيار حفظ كـ PDF');
+      alert('حدث خطأ أثناء تصدير ملف PDF، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsExportingPdf(false);
     }
